@@ -1,25 +1,18 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Plus, Check, Trash2, ChevronLeft, ChevronRight, X, Moon, Sun, Search, ChevronDown, ChevronUp, Repeat, Calendar, Clock } from 'lucide-react';
+import { Plus, Check, Trash2, ChevronLeft, ChevronRight, X, Moon, Sun, Search, ChevronDown, ChevronUp, Repeat, Calendar, Clock, Settings, Edit2 } from 'lucide-react';
 
 // Constants
 const hebrewDays = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 const hebrewMonths = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
 
-const HOURS = Array.from({ length: 16 }, (_, i) => i + 6); // 06:00 - 21:00
+const HOURS = Array.from({ length: 16 }, (_, i) => i + 6);
 
 const TAGS = [
-  { id: 'rosayo', name: 'ROSAYO', color: '#3B82F6' },
+  { id: 'work', name: 'עבודה', color: '#2563EB' },
   { id: 'personal', name: 'אישי', color: '#6B7280' },
-  { id: 'urgent', name: 'דחוף', color: '#EF4444' },
-];
-
-const RECURRING_OPTIONS = [
-  { id: 'none', name: 'ללא' },
-  { id: 'daily', name: 'כל יום' },
-  { id: 'weekly', name: 'כל שבוע' },
-  { id: 'monthly', name: 'כל חודש' },
+  { id: 'urgent', name: 'דחוף', color: '#DC2626' },
 ];
 
 // Utility functions
@@ -52,17 +45,58 @@ const getMonthDates = (date) => {
 
 const getGreeting = () => {
   const hour = new Date().getHours();
-  if (hour >= 5 && hour < 12) return { text: 'בוקר טוב, שקד', emoji: '☀️' };
-  if (hour >= 12 && hour < 17) return { text: 'צהריים טובים, שקד', emoji: '🌤️' };
-  if (hour >= 17 && hour < 21) return { text: 'ערב טוב, שקד', emoji: '🌅' };
-  return { text: 'לילה טוב, שקד', emoji: '🌙' };
+  if (hour >= 5 && hour < 12) return 'בוקר טוב, שקד';
+  if (hour >= 12 && hour < 17) return 'צהריים טובים, שקד';
+  if (hour >= 17 && hour < 21) return 'ערב טוב, שקד';
+  return 'לילה טוב, שקד';
+};
+
+// Mini Pie Chart Component
+const PieChart = ({ percentage, size = 44, strokeWidth = 4, darkMode }) => {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = radius * 2 * Math.PI;
+  const offset = circumference - (percentage / 100) * circumference;
+  const bgColor = darkMode ? '#2A2A2A' : '#E5E5E5';
+  const accentColor = '#2563EB';
+  
+  return (
+    <div className="relative" style={{ width: size, height: size }}>
+      <svg className="transform -rotate-90" width={size} height={size}>
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={bgColor}
+          strokeWidth={strokeWidth}
+          fill="none"
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={accentColor}
+          strokeWidth={strokeWidth}
+          fill="none"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          className="transition-all duration-500 ease-out"
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className={`text-xs font-bold ${darkMode ? 'text-[#F5F5F5]' : 'text-[#1A1A1A]'}`}>
+          {percentage}%
+        </span>
+      </div>
+    </div>
+  );
 };
 
 export default function TaskManager() {
   // State
   const [darkMode, setDarkMode] = useState(false);
   const [tasks, setTasks] = useState({});
-  const [backlog, setBacklog] = useState([]);
+  const [recurringTasks, setRecurringTasks] = useState([]);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState('week');
   const [showSearch, setShowSearch] = useState(false);
@@ -71,8 +105,8 @@ export default function TaskManager() {
   const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 });
   const [showNewTask, setShowNewTask] = useState(false);
   const [newTaskDate, setNewTaskDate] = useState(null);
+  const [showRecurringManager, setShowRecurringManager] = useState(false);
   const [streak, setStreak] = useState(0);
-  const [completedDays, setCompletedDays] = useState([]);
   
   const searchInputRef = useRef(null);
   const greeting = getGreeting();
@@ -80,91 +114,93 @@ export default function TaskManager() {
 
   // Theme
   const theme = {
-    bg: darkMode ? 'bg-[#121212]' : 'bg-[#F5F5F5]',
-    card: darkMode ? 'bg-[#1E1E1E]' : 'bg-white',
-    cardHover: darkMode ? 'hover:bg-[#252525]' : 'hover:bg-[#FAFAFA]',
-    border: darkMode ? 'border-[#2A2A2A]' : 'border-[#E5E5E5]',
+    bg: darkMode ? 'bg-[#0A0A0A]' : 'bg-[#F8F8F8]',
+    card: darkMode ? 'bg-[#161616]' : 'bg-white',
+    cardHover: darkMode ? 'hover:bg-[#1E1E1E]' : 'hover:bg-[#FAFAFA]',
+    border: darkMode ? 'border-[#252525]' : 'border-[#E8E8E8]',
     text: darkMode ? 'text-[#F5F5F5]' : 'text-[#1A1A1A]',
-    textSecondary: darkMode ? 'text-[#888888]' : 'text-[#6B6B6B]',
-    textMuted: darkMode ? 'text-[#555555]' : 'text-[#9CA3AF]',
+    textSecondary: darkMode ? 'text-[#A0A0A0]' : 'text-[#6B6B6B]',
+    textMuted: darkMode ? 'text-[#606060]' : 'text-[#9CA3AF]',
     accent: '#2563EB',
-    accentHover: '#1D4ED8',
-    success: '#059669',
     input: darkMode 
-      ? 'bg-[#252525] border-[#333333] text-[#F5F5F5] placeholder-[#666666]' 
+      ? 'bg-[#1E1E1E] border-[#2A2A2A] text-[#F5F5F5] placeholder-[#505050]' 
       : 'bg-white border-[#E5E5E5] text-[#1A1A1A] placeholder-[#9CA3AF]',
   };
 
   // Load/Save localStorage
   useEffect(() => {
-    const saved = localStorage.getItem('taskManagerData');
+    const saved = localStorage.getItem('taskManagerPro');
     if (saved) {
       const data = JSON.parse(saved);
       setDarkMode(data.darkMode ?? false);
       setTasks(data.tasks ?? {});
-      setBacklog(data.backlog ?? []);
+      setRecurringTasks(data.recurringTasks ?? []);
       setStreak(data.streak ?? 0);
-      setCompletedDays(data.completedDays ?? []);
     }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('taskManagerData', JSON.stringify({
-      darkMode, tasks, backlog, streak, completedDays
+    localStorage.setItem('taskManagerPro', JSON.stringify({
+      darkMode, tasks, recurringTasks, streak
     }));
-  }, [darkMode, tasks, backlog, streak, completedDays]);
+  }, [darkMode, tasks, recurringTasks, streak]);
 
-  // Handle recurring tasks
+  // Process recurring tasks daily
   useEffect(() => {
     const todayKey = formatDateKey(new Date());
-    const processedKey = `recurring_processed_${todayKey}`;
+    const processedKey = `recurring_v2_${todayKey}`;
     
     if (localStorage.getItem(processedKey)) return;
     
-    Object.entries(tasks).forEach(([dateKey, dayTasks]) => {
-      dayTasks.forEach(task => {
-        if (!task.recurring || task.recurring === 'none') return;
-        
-        const taskDate = new Date(dateKey);
-        const newDate = new Date(taskDate);
-        
-        if (task.recurring === 'daily') newDate.setDate(newDate.getDate() + 1);
-        else if (task.recurring === 'weekly') newDate.setDate(newDate.getDate() + 7);
-        else if (task.recurring === 'monthly') newDate.setMonth(newDate.getMonth() + 1);
-        
-        const newDateKey = formatDateKey(newDate);
-        if (newDateKey === todayKey) {
-          const exists = tasks[newDateKey]?.some(t => t.text === task.text && t.recurring === task.recurring);
-          if (!exists) {
-            setTasks(prev => ({
-              ...prev,
-              [newDateKey]: [...(prev[newDateKey] || []), {
-                ...task,
-                id: Date.now() + Math.random(),
-                completed: false,
-                subtasks: task.subtasks?.map(st => ({ ...st, completed: false })) || []
-              }]
-            }));
-          }
+    const todayDate = new Date();
+    const todayDayOfWeek = todayDate.getDay();
+    const todayDayOfMonth = todayDate.getDate();
+
+    recurringTasks.forEach(rt => {
+      let shouldAdd = false;
+
+      if (rt.frequency === 'daily') {
+        shouldAdd = true;
+      } else if (rt.frequency === 'weekly' && rt.dayOfWeek === todayDayOfWeek) {
+        shouldAdd = true;
+      } else if (rt.frequency === 'monthly' && rt.dayOfMonth === todayDayOfMonth) {
+        shouldAdd = true;
+      }
+
+      if (shouldAdd) {
+        const exists = tasks[todayKey]?.some(t => t.recurringId === rt.id);
+        if (!exists) {
+          setTasks(prev => ({
+            ...prev,
+            [todayKey]: [...(prev[todayKey] || []), {
+              id: Date.now() + Math.random(),
+              text: rt.text,
+              completed: false,
+              time: rt.time || null,
+              tag: rt.tag || null,
+              recurringId: rt.id,
+              subtasks: []
+            }]
+          }));
         }
-      });
+      }
     });
     
     localStorage.setItem(processedKey, 'true');
-  }, [tasks]);
+  }, [recurringTasks, tasks]);
 
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
       
-      switch(e.key) {
-        case 'n': case 'N': case 'מ':
+      switch(e.key.toLowerCase()) {
+        case 'n':
           e.preventDefault();
           setNewTaskDate(formatDateKey(new Date()));
           setShowNewTask(true);
           break;
-        case 't': case 'T': case 'א':
+        case 't':
           e.preventDefault();
           setCurrentDate(new Date());
           break;
@@ -180,13 +216,13 @@ export default function TaskManager() {
           e.preventDefault();
           setView('month');
           break;
-        case 'ArrowLeft':
+        case 'arrowleft':
           if (e.metaKey || e.ctrlKey) {
             e.preventDefault();
             navigate(1);
           }
           break;
-        case 'ArrowRight':
+        case 'arrowright':
           if (e.metaKey || e.ctrlKey) {
             e.preventDefault();
             navigate(-1);
@@ -197,9 +233,16 @@ export default function TaskManager() {
           setShowSearch(true);
           setTimeout(() => searchInputRef.current?.focus(), 100);
           break;
-        case 'Escape':
+        case 'escape':
           setShowSearch(false);
           setShowNewTask(false);
+          setShowRecurringManager(false);
+          break;
+        case 'r':
+          if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            setShowRecurringManager(true);
+          }
           break;
       }
     };
@@ -225,13 +268,29 @@ export default function TaskManager() {
       completed: false,
       time: taskData.time || null,
       tag: taskData.tag || null,
-      recurring: taskData.recurring || 'none',
       subtasks: taskData.subtasks || [],
     };
     setTasks(prev => ({
       ...prev,
       [dateKey]: [...(prev[dateKey] || []), newTask]
     }));
+  };
+
+  const addRecurringTask = (taskData) => {
+    const newRecurring = {
+      id: Date.now(),
+      text: taskData.text,
+      time: taskData.time || null,
+      tag: taskData.tag || null,
+      frequency: taskData.frequency,
+      dayOfWeek: taskData.dayOfWeek,
+      dayOfMonth: taskData.dayOfMonth,
+    };
+    setRecurringTasks(prev => [...prev, newRecurring]);
+  };
+
+  const deleteRecurringTask = (id) => {
+    setRecurringTasks(prev => prev.filter(rt => rt.id !== id));
   };
 
   const toggleTask = (dateKey, taskId) => {
@@ -280,9 +339,20 @@ export default function TaskManager() {
   };
 
   const getWeekStats = () => {
-    const weekDates = getWeekDates(currentDate);
+    const weekDts = getWeekDates(currentDate);
     let total = 0, completed = 0;
-    weekDates.forEach(date => {
+    weekDts.forEach(date => {
+      const stats = getDayStats(formatDateKey(date));
+      total += stats.total;
+      completed += stats.completed;
+    });
+    return { total, completed, percentage: total > 0 ? Math.round((completed / total) * 100) : 0 };
+  };
+
+  const getMonthStats = () => {
+    const monthDts = getMonthDates(currentDate);
+    let total = 0, completed = 0;
+    monthDts.forEach(date => {
       const stats = getDayStats(formatDateKey(date));
       total += stats.total;
       completed += stats.completed;
@@ -297,7 +367,7 @@ export default function TaskManager() {
       )
     : [];
 
-  // Get next task for "Now" view
+  // Get next task
   const getNextTask = () => {
     const todayTasks = tasks[today] || [];
     const now = new Date();
@@ -319,71 +389,73 @@ export default function TaskManager() {
   const monthDates = getMonthDates(currentDate);
   const todayStats = getDayStats(today);
   const weekStats = getWeekStats();
+  const monthStats = getMonthStats();
   const nextTask = getNextTask();
 
-  // Components
+  // Task Item Component
   const TaskItem = ({ task, dateKey, compact = false }) => {
     const [expanded, setExpanded] = useState(false);
     const hasSubtasks = task.subtasks?.length > 0;
     const completedSubtasks = task.subtasks?.filter(st => st.completed).length || 0;
     const tag = TAGS.find(t => t.id === task.tag);
+    const isFullyCompleted = hasSubtasks 
+      ? completedSubtasks === task.subtasks.length 
+      : task.completed;
 
     return (
-      <div className={`group ${compact ? 'py-1.5' : 'py-2'}`}>
+      <div className={`group ${compact ? 'py-1.5' : 'py-2.5'}`}>
         <div className="flex items-start gap-3">
           <button
             onClick={() => !hasSubtasks && toggleTask(dateKey, task.id)}
             className={`flex-shrink-0 w-5 h-5 mt-0.5 rounded-full border-2 flex items-center justify-center transition-all duration-200 ${
-              task.completed || (hasSubtasks && completedSubtasks === task.subtasks.length)
-                ? 'bg-[#059669] border-[#059669]' 
-                : `${darkMode ? 'border-[#444]' : 'border-[#D1D5DB]'} hover:border-[#2563EB]`
+              isFullyCompleted
+                ? 'bg-[#2563EB] border-[#2563EB]' 
+                : `${darkMode ? 'border-[#404040]' : 'border-[#D1D5DB]'} hover:border-[#2563EB]`
             }`}
           >
-            {(task.completed || (hasSubtasks && completedSubtasks === task.subtasks.length)) && (
-              <Check size={12} className="text-white" strokeWidth={3} />
-            )}
+            {isFullyCompleted && <Check size={12} className="text-white" strokeWidth={3} />}
           </button>
           
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {task.time && (
-                <span className={`text-xs font-medium ${theme.textMuted}`}>
+                <span className={`text-xs font-mono font-medium ${theme.textMuted}`}>
                   {task.time}
                 </span>
               )}
-              <span className={`${compact ? 'text-sm' : 'text-[15px]'} ${
-                task.completed ? `line-through ${theme.textMuted}` : theme.text
+              <span className={`${compact ? 'text-sm' : 'text-[15px]'} leading-snug ${
+                isFullyCompleted ? `line-through ${theme.textMuted}` : theme.text
               }`}>
                 {task.text}
               </span>
               {tag && (
                 <span 
-                  className="text-xs px-1.5 py-0.5 rounded"
-                  style={{ backgroundColor: `${tag.color}20`, color: tag.color }}
+                  className="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase tracking-wide"
+                  style={{ backgroundColor: `${tag.color}15`, color: tag.color }}
                 >
                   {tag.name}
                 </span>
               )}
-              {task.recurring && task.recurring !== 'none' && (
+              {task.recurringId && (
                 <Repeat size={12} className={theme.textMuted} />
               )}
               {hasSubtasks && (
-                <span className={`text-xs ${theme.textMuted}`}>
-                  [{completedSubtasks}/{task.subtasks.length}]
+                <span className={`text-xs font-medium ${theme.textMuted}`}>
+                  {completedSubtasks}/{task.subtasks.length}
                 </span>
               )}
             </div>
             
             {hasSubtasks && expanded && (
-              <div className="mt-2 mr-2 space-y-1.5 border-r-2 border-[#E5E5E5] dark:border-[#333] pr-3">
+              <div className={`mt-3 mr-2 space-y-2 border-r-2 ${darkMode ? 'border-[#2A2A2A]' : 'border-[#E5E5E5]'} pr-3`}>
                 {task.subtasks.map(subtask => (
                   <div key={subtask.id} className="flex items-center gap-2">
                     <button
                       onClick={() => toggleSubtask(dateKey, task.id, subtask.id)}
-                      className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
+                      className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${
                         subtask.completed 
-                          ? 'bg-[#059669] border-[#059669]' 
-                          : `${darkMode ? 'border-[#444]' : 'border-[#D1D5DB]'}`
+                          ? 'bg-[#2563EB] border-[#2563EB]' 
+                          : `${darkMode ? 'border-[#404040]' : 'border-[#D1D5DB]'}`
                       }`}
                     >
                       {subtask.completed && <Check size={10} className="text-white" strokeWidth={3} />}
@@ -401,14 +473,14 @@ export default function TaskManager() {
             {hasSubtasks && (
               <button
                 onClick={() => setExpanded(!expanded)}
-                className={`p-1 rounded ${darkMode ? 'hover:bg-[#333]' : 'hover:bg-[#F3F4F6]'}`}
+                className={`p-1.5 rounded-lg ${darkMode ? 'hover:bg-[#252525]' : 'hover:bg-[#F3F4F6]'} ${theme.textSecondary}`}
               >
                 {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
               </button>
             )}
             <button
               onClick={() => deleteTask(dateKey, task.id)}
-              className={`p-1 rounded text-red-400 ${darkMode ? 'hover:bg-red-900/20' : 'hover:bg-red-50'}`}
+              className={`p-1.5 rounded-lg ${darkMode ? 'hover:bg-[#2A1A1A]' : 'hover:bg-red-50'} text-red-500`}
             >
               <Trash2 size={14} />
             </button>
@@ -418,11 +490,15 @@ export default function TaskManager() {
     );
   };
 
+  // New Task Modal
   const NewTaskModal = () => {
     const [text, setText] = useState('');
     const [time, setTime] = useState('');
     const [tag, setTag] = useState('');
-    const [recurring, setRecurring] = useState('none');
+    const [isRecurring, setIsRecurring] = useState(false);
+    const [frequency, setFrequency] = useState('daily');
+    const [dayOfWeek, setDayOfWeek] = useState(0);
+    const [dayOfMonth, setDayOfMonth] = useState(1);
     const [subtasks, setSubtasks] = useState([]);
     const [newSubtask, setNewSubtask] = useState('');
     const inputRef = useRef(null);
@@ -433,7 +509,12 @@ export default function TaskManager() {
 
     const handleSubmit = () => {
       if (!text.trim()) return;
-      addTask(newTaskDate, { text, time, tag, recurring, subtasks });
+      
+      if (isRecurring) {
+        addRecurringTask({ text, time, tag, frequency, dayOfWeek, dayOfMonth });
+      } else {
+        addTask(newTaskDate, { text, time, tag, subtasks });
+      }
       setShowNewTask(false);
     };
 
@@ -444,31 +525,33 @@ export default function TaskManager() {
     };
 
     return (
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-        <div className={`${theme.card} rounded-2xl shadow-2xl w-full max-w-md overflow-hidden`}>
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className={`${theme.card} rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border ${theme.border}`}>
           <div className={`p-5 border-b ${theme.border}`}>
             <div className="flex items-center justify-between">
               <h2 className={`text-lg font-semibold ${theme.text}`}>משימה חדשה</h2>
               <button 
                 onClick={() => setShowNewTask(false)}
-                className={`p-1.5 rounded-lg ${darkMode ? 'hover:bg-[#333]' : 'hover:bg-[#F3F4F6]'}`}
+                className={`p-2 rounded-lg ${darkMode ? 'hover:bg-[#252525]' : 'hover:bg-[#F3F4F6]'}`}
               >
                 <X size={20} className={theme.textSecondary} />
               </button>
             </div>
           </div>
 
-          <div className="p-5 space-y-4">
-            <input
-              ref={inputRef}
-              type="text"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSubmit()}
-              placeholder="מה צריך לעשות?"
-              className={`w-full px-4 py-3 rounded-xl border text-[15px] ${theme.input} focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent`}
-              dir="rtl"
-            />
+          <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
+            <div>
+              <input
+                ref={inputRef}
+                type="text"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSubmit()}
+                placeholder="מה צריך לעשות?"
+                className={`w-full px-4 py-3 rounded-xl border text-[15px] ${theme.input} focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent transition-all`}
+                dir="rtl"
+              />
+            </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -493,56 +576,109 @@ export default function TaskManager() {
               </div>
             </div>
 
-            <div>
-              <label className={`text-xs font-medium ${theme.textSecondary} mb-1.5 block`}>חזרה</label>
-              <select
-                value={recurring}
-                onChange={(e) => setRecurring(e.target.value)}
-                className={`w-full px-3 py-2.5 rounded-xl border text-sm ${theme.input} focus:outline-none focus:ring-2 focus:ring-[#2563EB]`}
-              >
-                {RECURRING_OPTIONS.map(opt => <option key={opt.id} value={opt.id}>{opt.name}</option>)}
-              </select>
+            {/* Recurring Toggle */}
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-[#1E1E1E]' : 'bg-[#F9FAFB]'}`}>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isRecurring}
+                  onChange={(e) => setIsRecurring(e.target.checked)}
+                  className="w-5 h-5 rounded border-2 border-[#D1D5DB] text-[#2563EB] focus:ring-[#2563EB]"
+                />
+                <div>
+                  <span className={`text-sm font-medium ${theme.text}`}>משימה קבועה</span>
+                  <p className={`text-xs ${theme.textMuted}`}>תחזור אוטומטית לפי ההגדרה</p>
+                </div>
+              </label>
+
+              {isRecurring && (
+                <div className="mt-4 space-y-3">
+                  <div>
+                    <label className={`text-xs font-medium ${theme.textSecondary} mb-1.5 block`}>תדירות</label>
+                    <select
+                      value={frequency}
+                      onChange={(e) => setFrequency(e.target.value)}
+                      className={`w-full px-3 py-2.5 rounded-xl border text-sm ${theme.input} focus:outline-none focus:ring-2 focus:ring-[#2563EB]`}
+                    >
+                      <option value="daily">כל יום</option>
+                      <option value="weekly">כל שבוע</option>
+                      <option value="monthly">כל חודש</option>
+                    </select>
+                  </div>
+
+                  {frequency === 'weekly' && (
+                    <div>
+                      <label className={`text-xs font-medium ${theme.textSecondary} mb-1.5 block`}>ביום</label>
+                      <select
+                        value={dayOfWeek}
+                        onChange={(e) => setDayOfWeek(Number(e.target.value))}
+                        className={`w-full px-3 py-2.5 rounded-xl border text-sm ${theme.input} focus:outline-none focus:ring-2 focus:ring-[#2563EB]`}
+                      >
+                        {hebrewDays.map((day, i) => <option key={i} value={i}>{day}</option>)}
+                      </select>
+                    </div>
+                  )}
+
+                  {frequency === 'monthly' && (
+                    <div>
+                      <label className={`text-xs font-medium ${theme.textSecondary} mb-1.5 block`}>בתאריך</label>
+                      <select
+                        value={dayOfMonth}
+                        onChange={(e) => setDayOfMonth(Number(e.target.value))}
+                        className={`w-full px-3 py-2.5 rounded-xl border text-sm ${theme.input} focus:outline-none focus:ring-2 focus:ring-[#2563EB]`}
+                      >
+                        {Array.from({ length: 31 }, (_, i) => (
+                          <option key={i + 1} value={i + 1}>{i + 1}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            <div>
-              <label className={`text-xs font-medium ${theme.textSecondary} mb-1.5 block`}>תת-משימות</label>
-              <div className="space-y-2">
-                {subtasks.map((st, i) => (
-                  <div key={st.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg ${darkMode ? 'bg-[#252525]' : 'bg-[#F9FAFB]'}`}>
-                    <span className={`text-sm ${theme.text}`}>{st.text}</span>
-                    <button 
-                      onClick={() => setSubtasks(subtasks.filter((_, idx) => idx !== i))}
-                      className="mr-auto text-red-400"
+            {/* Subtasks - only for non-recurring */}
+            {!isRecurring && (
+              <div>
+                <label className={`text-xs font-medium ${theme.textSecondary} mb-1.5 block`}>תת-משימות</label>
+                <div className="space-y-2">
+                  {subtasks.map((st, i) => (
+                    <div key={st.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg ${darkMode ? 'bg-[#1E1E1E]' : 'bg-[#F9FAFB]'}`}>
+                      <span className={`text-sm flex-1 ${theme.text}`}>{st.text}</span>
+                      <button 
+                        onClick={() => setSubtasks(subtasks.filter((_, idx) => idx !== i))}
+                        className="text-red-500 hover:text-red-600"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newSubtask}
+                      onChange={(e) => setNewSubtask(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addSubtask())}
+                      placeholder="הוסף תת-משימה..."
+                      className={`flex-1 px-3 py-2 rounded-lg border text-sm ${theme.input} focus:outline-none focus:ring-2 focus:ring-[#2563EB]`}
+                      dir="rtl"
+                    />
+                    <button
+                      onClick={addSubtask}
+                      className="px-3 py-2 bg-[#2563EB] text-white rounded-lg hover:bg-[#1D4ED8] transition-colors"
                     >
-                      <X size={14} />
+                      <Plus size={16} />
                     </button>
                   </div>
-                ))}
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newSubtask}
-                    onChange={(e) => setNewSubtask(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && addSubtask()}
-                    placeholder="הוסף תת-משימה..."
-                    className={`flex-1 px-3 py-2 rounded-lg border text-sm ${theme.input} focus:outline-none focus:ring-2 focus:ring-[#2563EB]`}
-                    dir="rtl"
-                  />
-                  <button
-                    onClick={addSubtask}
-                    className="px-3 py-2 bg-[#2563EB] text-white rounded-lg hover:bg-[#1D4ED8] transition-colors"
-                  >
-                    <Plus size={16} />
-                  </button>
                 </div>
               </div>
-            </div>
+            )}
           </div>
 
           <div className={`p-4 border-t ${theme.border} flex gap-3`}>
             <button
               onClick={() => setShowNewTask(false)}
-              className={`flex-1 py-3 rounded-xl font-medium ${darkMode ? 'bg-[#252525] hover:bg-[#333]' : 'bg-[#F3F4F6] hover:bg-[#E5E7EB]'} ${theme.text} transition-colors`}
+              className={`flex-1 py-3 rounded-xl font-medium ${darkMode ? 'bg-[#1E1E1E] hover:bg-[#252525]' : 'bg-[#F3F4F6] hover:bg-[#E5E7EB]'} ${theme.text} transition-colors`}
             >
               ביטול
             </button>
@@ -550,7 +686,7 @@ export default function TaskManager() {
               onClick={handleSubmit}
               className="flex-1 py-3 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xl font-medium transition-colors"
             >
-              הוסף משימה
+              {isRecurring ? 'הוסף משימה קבועה' : 'הוסף משימה'}
             </button>
           </div>
         </div>
@@ -558,9 +694,107 @@ export default function TaskManager() {
     );
   };
 
+  // Recurring Tasks Manager Modal
+  const RecurringManagerModal = () => {
+    const getFrequencyText = (rt) => {
+      if (rt.frequency === 'daily') return 'כל יום';
+      if (rt.frequency === 'weekly') return `כל ${hebrewDays[rt.dayOfWeek]}`;
+      if (rt.frequency === 'monthly') return `ה-${rt.dayOfMonth} בכל חודש`;
+      return '';
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className={`${theme.card} rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border ${theme.border}`}>
+          <div className={`p-5 border-b ${theme.border}`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className={`text-lg font-semibold ${theme.text}`}>משימות קבועות</h2>
+                <p className={`text-sm ${theme.textMuted} mt-0.5`}>{recurringTasks.length} משימות מוגדרות</p>
+              </div>
+              <button 
+                onClick={() => setShowRecurringManager(false)}
+                className={`p-2 rounded-lg ${darkMode ? 'hover:bg-[#252525]' : 'hover:bg-[#F3F4F6]'}`}
+              >
+                <X size={20} className={theme.textSecondary} />
+              </button>
+            </div>
+          </div>
+
+          <div className="p-4 max-h-[60vh] overflow-y-auto">
+            {recurringTasks.length === 0 ? (
+              <div className={`text-center py-12 ${theme.textMuted}`}>
+                <Repeat size={40} className="mx-auto mb-3 opacity-30" />
+                <p className="font-medium">אין משימות קבועות</p>
+                <p className="text-sm mt-1">הוסף משימה חדשה וסמן אותה כקבועה</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {recurringTasks.map(rt => {
+                  const tag = TAGS.find(t => t.id === rt.tag);
+                  return (
+                    <div 
+                      key={rt.id} 
+                      className={`p-4 rounded-xl border ${theme.border} ${darkMode ? 'bg-[#1E1E1E]' : 'bg-[#FAFAFA]'}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`font-medium ${theme.text}`}>{rt.text}</span>
+                            {tag && (
+                              <span 
+                                className="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase"
+                                style={{ backgroundColor: `${tag.color}15`, color: tag.color }}
+                              >
+                                {tag.name}
+                              </span>
+                            )}
+                          </div>
+                          <div className={`flex items-center gap-3 mt-2 text-sm ${theme.textSecondary}`}>
+                            <span className="flex items-center gap-1">
+                              <Repeat size={12} />
+                              {getFrequencyText(rt)}
+                            </span>
+                            {rt.time && (
+                              <span className="flex items-center gap-1">
+                                <Clock size={12} />
+                                {rt.time}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => deleteRecurringTask(rt.id)}
+                          className={`p-2 rounded-lg ${darkMode ? 'hover:bg-[#2A1A1A]' : 'hover:bg-red-50'} text-red-500`}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className={`p-4 border-t ${theme.border}`}>
+            <button
+              onClick={() => { setShowRecurringManager(false); setShowNewTask(true); }}
+              className="w-full py-3 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+            >
+              <Plus size={18} />
+              הוסף משימה קבועה
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Search Modal
   const SearchModal = () => (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-50 pt-[15vh]">
-      <div className={`${theme.card} rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden`}>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center z-50 pt-[12vh]">
+      <div className={`${theme.card} rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border ${theme.border}`}>
         <div className={`p-4 border-b ${theme.border}`}>
           <div className="flex items-center gap-3">
             <Search size={20} className={theme.textMuted} />
@@ -585,6 +819,12 @@ export default function TaskManager() {
               <div 
                 key={`${task.dateKey}-${task.id}`}
                 className={`p-3 rounded-xl ${theme.cardHover} cursor-pointer`}
+                onClick={() => { 
+                  setCurrentDate(new Date(task.dateKey)); 
+                  setView('day'); 
+                  setShowSearch(false); 
+                  setSearchQuery(''); 
+                }}
               >
                 <div className={`text-sm ${theme.text}`}>{task.text}</div>
                 <div className={`text-xs ${theme.textMuted} mt-1`}>
@@ -597,40 +837,41 @@ export default function TaskManager() {
         
         <div className={`p-3 border-t ${theme.border}`}>
           <div className={`text-xs ${theme.textMuted} text-center`}>
-            ESC לסגירה · Enter לבחירה
+            ESC לסגירה
           </div>
         </div>
       </div>
     </div>
   );
 
+  // Hover Preview
   const HoverPreview = () => {
     if (!hoveredDay) return null;
     const stats = getDayStats(hoveredDay);
     
     return (
       <div 
-        className={`fixed z-50 ${theme.card} rounded-xl shadow-xl border ${theme.border} p-3 w-64`}
+        className={`fixed z-50 ${theme.card} rounded-xl shadow-xl border ${theme.border} p-4 w-72`}
         style={{ 
-          top: hoverPosition.y + 10, 
-          left: hoverPosition.x - 128,
+          top: Math.min(hoverPosition.y + 10, window.innerHeight - 200), 
+          left: Math.max(10, Math.min(hoverPosition.x - 144, window.innerWidth - 300)),
           pointerEvents: 'none'
         }}
       >
-        <div className={`text-sm font-medium ${theme.text} mb-2`}>
-          {stats.total} משימות · {stats.percentage}% הושלם
+        <div className={`text-sm font-semibold ${theme.text} mb-3`}>
+          {stats.total} משימות | {stats.percentage}% הושלם
         </div>
-        <div className="space-y-1">
-          {stats.tasks.slice(0, 4).map(task => (
+        <div className="space-y-2">
+          {stats.tasks.slice(0, 5).map(task => (
             <div key={task.id} className="flex items-center gap-2">
-              <div className={`w-1.5 h-1.5 rounded-full ${task.completed ? 'bg-[#059669]' : 'bg-[#D1D5DB]'}`} />
-              <span className={`text-xs truncate ${task.completed ? theme.textMuted : theme.textSecondary}`}>
-                {task.time && `${task.time} · `}{task.text}
+              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${task.completed ? 'bg-[#2563EB]' : darkMode ? 'bg-[#404040]' : 'bg-[#D1D5DB]'}`} />
+              <span className={`text-sm truncate ${task.completed ? theme.textMuted : theme.textSecondary}`}>
+                {task.time && <span className="font-mono">{task.time}</span>} {task.text}
               </span>
             </div>
           ))}
-          {stats.tasks.length > 4 && (
-            <div className={`text-xs ${theme.textMuted}`}>+{stats.tasks.length - 4} עוד</div>
+          {stats.tasks.length > 5 && (
+            <div className={`text-xs ${theme.textMuted}`}>+{stats.tasks.length - 5} נוספות</div>
           )}
         </div>
       </div>
@@ -655,30 +896,30 @@ export default function TaskManager() {
     const unscheduledTasks = dayTasks.filter(t => !t.time);
 
     return (
-      <div className={`${theme.card} rounded-2xl shadow-sm overflow-hidden`}>
-        <div className={`p-4 border-b ${theme.border} flex items-center justify-between`}>
+      <div className={`${theme.card} rounded-2xl shadow-sm overflow-hidden border ${theme.border}`}>
+        <div className={`p-5 border-b ${theme.border} flex items-center justify-between`}>
           <div>
-            <div className={`text-lg font-semibold ${theme.text}`}>
+            <div className={`text-xl font-semibold ${theme.text}`}>
               {hebrewDays[currentDate.getDay()]}
             </div>
-            <div className={`text-sm ${theme.textSecondary}`}>
-              {currentDate.getDate()} {hebrewMonths[currentDate.getMonth()]}
+            <div className={`text-sm ${theme.textSecondary} mt-0.5`}>
+              {currentDate.getDate()} {hebrewMonths[currentDate.getMonth()]} {currentDate.getFullYear()}
             </div>
           </div>
           {isToday && (
-            <span className="px-3 py-1 bg-[#2563EB] text-white text-xs font-medium rounded-full">
+            <span className="px-3 py-1.5 bg-[#2563EB] text-white text-xs font-semibold rounded-lg">
               היום
             </span>
           )}
         </div>
 
-        <div className="divide-y divide-[#E5E5E5] dark:divide-[#2A2A2A]">
+        <div className={`divide-y ${darkMode ? 'divide-[#1E1E1E]' : 'divide-[#F3F4F6]'}`}>
           {HOURS.map(hour => (
-            <div key={hour} className="flex min-h-[60px]">
-              <div className={`w-16 p-2 text-left text-sm ${theme.textMuted} border-l ${theme.border}`}>
+            <div key={hour} className="flex min-h-[56px]">
+              <div className={`w-20 py-3 px-4 text-sm font-mono ${theme.textMuted} border-l ${theme.border} flex-shrink-0`}>
                 {String(hour).padStart(2, '0')}:00
               </div>
-              <div className="flex-1 p-2">
+              <div className="flex-1 py-1 px-3">
                 {tasksByHour[hour]?.map(task => (
                   <TaskItem key={task.id} task={task} dateKey={dateKey} compact />
                 ))}
@@ -688,18 +929,20 @@ export default function TaskManager() {
         </div>
 
         {unscheduledTasks.length > 0 && (
-          <div className={`p-4 border-t ${theme.border}`}>
-            <div className={`text-sm font-medium ${theme.textSecondary} mb-2`}>ללא שעה</div>
-            {unscheduledTasks.map(task => (
-              <TaskItem key={task.id} task={task} dateKey={dateKey} />
-            ))}
+          <div className={`p-5 border-t ${theme.border}`}>
+            <div className={`text-sm font-medium ${theme.textSecondary} mb-3`}>ללא שעה מוגדרת</div>
+            <div className="space-y-1">
+              {unscheduledTasks.map(task => (
+                <TaskItem key={task.id} task={task} dateKey={dateKey} />
+              ))}
+            </div>
           </div>
         )}
 
         <div className={`p-4 border-t ${theme.border}`}>
           <button
             onClick={() => { setNewTaskDate(dateKey); setShowNewTask(true); }}
-            className={`w-full py-3 rounded-xl border-2 border-dashed ${theme.border} ${theme.textSecondary} hover:border-[#2563EB] hover:text-[#2563EB] transition-colors flex items-center justify-center gap-2`}
+            className={`w-full py-3 rounded-xl border-2 border-dashed ${theme.border} ${theme.textSecondary} hover:border-[#2563EB] hover:text-[#2563EB] transition-all flex items-center justify-center gap-2 font-medium`}
           >
             <Plus size={18} />
             הוסף משימה
@@ -711,7 +954,7 @@ export default function TaskManager() {
 
   // Week View
   const WeekView = () => (
-    <div className="grid grid-cols-7 gap-3">
+    <div className="grid grid-cols-7 gap-4">
       {weekDates.map((date, i) => {
         const dateKey = formatDateKey(date);
         const dayTasks = tasks[dateKey] || [];
@@ -721,30 +964,41 @@ export default function TaskManager() {
         return (
           <div 
             key={i} 
-            className={`${theme.card} rounded-2xl shadow-sm overflow-hidden ${isToday ? 'ring-2 ring-[#2563EB]' : ''}`}
+            className={`${theme.card} rounded-2xl shadow-sm overflow-hidden border ${theme.border} ${isToday ? 'ring-2 ring-[#2563EB]' : ''}`}
           >
-            <div className={`p-3 text-center ${isToday ? 'bg-[#2563EB] text-white' : ''}`}>
-              <div className={`text-sm ${isToday ? 'text-blue-100' : theme.textSecondary}`}>
+            <div 
+              className={`p-4 text-center cursor-pointer transition-colors ${isToday ? 'bg-[#2563EB]' : darkMode ? 'hover:bg-[#1E1E1E]' : 'hover:bg-[#FAFAFA]'}`}
+              onClick={() => { setCurrentDate(date); setView('day'); }}
+            >
+              <div className={`text-sm font-medium ${isToday ? 'text-blue-100' : theme.textSecondary}`}>
                 {hebrewDays[date.getDay()]}
               </div>
-              <div className={`text-xl font-semibold ${isToday ? 'text-white' : theme.text}`}>
+              <div className={`text-2xl font-bold mt-1 ${isToday ? 'text-white' : theme.text}`}>
                 {date.getDate()}
               </div>
-              <div className={`text-xs mt-1 ${isToday ? 'text-blue-100' : theme.textMuted}`}>
-                {stats.completed}/{stats.total}
-              </div>
+              {stats.total > 0 && (
+                <div className={`text-xs mt-2 font-medium ${isToday ? 'text-blue-100' : theme.textMuted}`}>
+                  {stats.completed}/{stats.total}
+                </div>
+              )}
             </div>
 
-            <div className="p-2 min-h-[200px] max-h-[300px] overflow-y-auto">
-              {dayTasks.map(task => (
-                <TaskItem key={task.id} task={task} dateKey={dateKey} compact />
-              ))}
+            <div className={`p-3 min-h-[180px] max-h-[280px] overflow-y-auto border-t ${theme.border}`}>
+              {dayTasks.length === 0 ? (
+                <div className={`text-center py-8 ${theme.textMuted} text-sm`}>
+                  אין משימות
+                </div>
+              ) : (
+                dayTasks.map(task => (
+                  <TaskItem key={task.id} task={task} dateKey={dateKey} compact />
+                ))
+              )}
             </div>
 
             <div className={`p-2 border-t ${theme.border}`}>
               <button
                 onClick={() => { setNewTaskDate(dateKey); setShowNewTask(true); }}
-                className={`w-full py-2 rounded-lg ${theme.cardHover} ${theme.textMuted} text-sm flex items-center justify-center gap-1`}
+                className={`w-full py-2 rounded-lg ${theme.cardHover} ${theme.textMuted} text-sm flex items-center justify-center gap-1 transition-colors`}
               >
                 <Plus size={14} />
               </button>
@@ -761,10 +1015,10 @@ export default function TaskManager() {
     const startPadding = firstDayOfMonth.getDay();
 
     return (
-      <div className={`${theme.card} rounded-2xl shadow-sm p-4`}>
-        <div className="grid grid-cols-7 gap-1 mb-2">
+      <div className={`${theme.card} rounded-2xl shadow-sm p-5 border ${theme.border}`}>
+        <div className="grid grid-cols-7 gap-1 mb-3">
           {hebrewDays.map(day => (
-            <div key={day} className={`text-center text-sm font-medium py-2 ${theme.textSecondary}`}>
+            <div key={day} className={`text-center text-sm font-semibold py-2 ${theme.textSecondary}`}>
               {day}
             </div>
           ))}
@@ -782,10 +1036,10 @@ export default function TaskManager() {
             return (
               <div
                 key={dateKey}
-                className={`aspect-square p-1.5 rounded-xl cursor-pointer transition-all ${
+                className={`aspect-square p-2 rounded-xl cursor-pointer transition-all ${
                   isToday 
                     ? 'bg-[#2563EB] text-white' 
-                    : `${theme.cardHover} ${stats.total > 0 ? '' : ''}`
+                    : `${theme.cardHover}`
                 }`}
                 onMouseEnter={(e) => {
                   if (stats.total > 0) {
@@ -796,18 +1050,21 @@ export default function TaskManager() {
                 onMouseLeave={() => setHoveredDay(null)}
                 onClick={() => { setCurrentDate(date); setView('day'); }}
               >
-                <div className={`text-sm font-medium ${isToday ? '' : theme.text}`}>
+                <div className={`text-sm font-semibold ${isToday ? '' : theme.text}`}>
                   {date.getDate()}
                 </div>
                 {stats.total > 0 && (
                   <div className="mt-1">
                     <div 
-                      className={`h-1 rounded-full ${isToday ? 'bg-white/30' : darkMode ? 'bg-[#333]' : 'bg-[#E5E5E5]'}`}
+                      className={`h-1 rounded-full ${isToday ? 'bg-white/30' : darkMode ? 'bg-[#252525]' : 'bg-[#E5E5E5]'}`}
                     >
                       <div 
-                        className={`h-1 rounded-full ${isToday ? 'bg-white' : 'bg-[#2563EB]'}`}
+                        className={`h-1 rounded-full transition-all ${isToday ? 'bg-white' : 'bg-[#2563EB]'}`}
                         style={{ width: `${stats.percentage}%` }}
                       />
+                    </div>
+                    <div className={`text-[10px] mt-1 ${isToday ? 'text-blue-100' : theme.textMuted}`}>
+                      {stats.completed}/{stats.total}
                     </div>
                   </div>
                 )}
@@ -824,54 +1081,72 @@ export default function TaskManager() {
       <div className="max-w-7xl mx-auto p-6 space-y-6">
         
         {/* Header */}
-        <header className={`${theme.card} rounded-2xl shadow-sm p-6`}>
+        <header className={`${theme.card} rounded-2xl shadow-sm p-6 border ${theme.border}`}>
           <div className="flex items-center justify-between">
             <div>
-              <h1 className={`text-2xl font-bold ${theme.text} flex items-center gap-2`}>
-                <span>{greeting.emoji}</span>
-                <span>{greeting.text}</span>
-              </h1>
+              <h1 className={`text-2xl font-bold ${theme.text}`}>{greeting}</h1>
               <p className={`mt-1 ${theme.textSecondary}`}>
-                יום {hebrewDays[new Date().getDay()]}, {new Date().getDate()} ב{hebrewMonths[new Date().getMonth()]} {new Date().getFullYear()}
+                יום {hebrewDays[new Date().getDay()]}, {new Date().getDate()} {hebrewMonths[new Date().getMonth()]} {new Date().getFullYear()}
               </p>
             </div>
 
             <div className="flex items-center gap-2">
               <button
+                onClick={() => setShowRecurringManager(true)}
+                className={`p-2.5 rounded-xl ${darkMode ? 'hover:bg-[#1E1E1E]' : 'hover:bg-[#F3F4F6]'} ${theme.textSecondary} transition-colors`}
+                title="משימות קבועות (Ctrl+R)"
+              >
+                <Repeat size={20} />
+              </button>
+              <button
                 onClick={() => setShowSearch(true)}
-                className={`p-2.5 rounded-xl ${darkMode ? 'hover:bg-[#252525]' : 'hover:bg-[#F3F4F6]'} ${theme.textSecondary} transition-colors`}
+                className={`p-2.5 rounded-xl ${darkMode ? 'hover:bg-[#1E1E1E]' : 'hover:bg-[#F3F4F6]'} ${theme.textSecondary} transition-colors`}
                 title="חיפוש (/)"
               >
                 <Search size={20} />
               </button>
               <button
                 onClick={() => setDarkMode(!darkMode)}
-                className={`p-2.5 rounded-xl ${darkMode ? 'hover:bg-[#252525]' : 'hover:bg-[#F3F4F6]'} ${theme.textSecondary} transition-colors`}
+                className={`p-2.5 rounded-xl ${darkMode ? 'hover:bg-[#1E1E1E]' : 'hover:bg-[#F3F4F6]'} ${theme.textSecondary} transition-colors`}
               >
                 {darkMode ? <Sun size={20} /> : <Moon size={20} />}
               </button>
             </div>
           </div>
 
-          {/* Stats Bar */}
-          <div className={`mt-4 pt-4 border-t ${theme.border} flex items-center gap-6 text-sm`}>
-            <div>
-              <span className={theme.textSecondary}>היום: </span>
-              <span className={`font-semibold ${theme.text}`}>{todayStats.completed}/{todayStats.total}</span>
+          {/* Stats Bar with Pie Charts */}
+          <div className={`mt-5 pt-5 border-t ${theme.border} flex items-center justify-between`}>
+            <div className="flex items-center gap-8">
+              <div className="flex items-center gap-3">
+                <PieChart percentage={todayStats.percentage} size={48} strokeWidth={4} darkMode={darkMode} />
+                <div>
+                  <div className={`text-xs font-medium ${theme.textMuted}`}>היום</div>
+                  <div className={`text-sm font-bold ${theme.text}`}>{todayStats.completed}/{todayStats.total}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <PieChart percentage={weekStats.percentage} size={48} strokeWidth={4} darkMode={darkMode} />
+                <div>
+                  <div className={`text-xs font-medium ${theme.textMuted}`}>השבוע</div>
+                  <div className={`text-sm font-bold ${theme.text}`}>{weekStats.completed}/{weekStats.total}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <PieChart percentage={monthStats.percentage} size={48} strokeWidth={4} darkMode={darkMode} />
+                <div>
+                  <div className={`text-xs font-medium ${theme.textMuted}`}>החודש</div>
+                  <div className={`text-sm font-bold ${theme.text}`}>{monthStats.completed}/{monthStats.total}</div>
+                </div>
+              </div>
             </div>
-            <div>
-              <span className={theme.textSecondary}>השבוע: </span>
-              <span className={`font-semibold ${theme.text}`}>{weekStats.completed}/{weekStats.total}</span>
-            </div>
-            <div>
-              <span className={theme.textSecondary}>סטריק: </span>
-              <span className={`font-semibold ${theme.text}`}>{streak} ימים</span>
+            <div className={`text-sm ${theme.textSecondary}`}>
+              סטריק: <span className={`font-bold ${theme.text}`}>{streak} ימים</span>
             </div>
           </div>
 
           {/* Navigation */}
-          <div className={`mt-4 pt-4 border-t ${theme.border} flex items-center justify-between`}>
-            <div className={`flex p-1 rounded-xl ${darkMode ? 'bg-[#252525]' : 'bg-[#F3F4F6]'}`}>
+          <div className={`mt-5 pt-5 border-t ${theme.border} flex items-center justify-between`}>
+            <div className={`flex p-1 rounded-xl ${darkMode ? 'bg-[#1E1E1E]' : 'bg-[#F3F4F6]'}`}>
               {[
                 { id: 'day', label: 'יום', key: '1' },
                 { id: 'week', label: 'שבוע', key: '2' },
@@ -880,7 +1155,7 @@ export default function TaskManager() {
                 <button
                   key={v.id}
                   onClick={() => setView(v.id)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
                     view === v.id 
                       ? `${theme.card} shadow-sm text-[#2563EB]` 
                       : theme.textSecondary
@@ -894,19 +1169,19 @@ export default function TaskManager() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => navigate(-1)}
-                className={`p-2 rounded-lg ${darkMode ? 'hover:bg-[#252525]' : 'hover:bg-[#F3F4F6]'} ${theme.textSecondary}`}
+                className={`p-2.5 rounded-lg ${darkMode ? 'hover:bg-[#1E1E1E]' : 'hover:bg-[#F3F4F6]'} ${theme.textSecondary} transition-colors`}
               >
                 <ChevronRight size={20} />
               </button>
               <button
                 onClick={() => setCurrentDate(new Date())}
-                className="px-4 py-2 text-sm font-medium text-[#2563EB] hover:bg-[#2563EB]/10 rounded-lg transition-colors"
+                className="px-4 py-2.5 text-sm font-semibold text-[#2563EB] hover:bg-[#2563EB]/10 rounded-lg transition-colors"
               >
                 היום
               </button>
               <button
                 onClick={() => navigate(1)}
-                className={`p-2 rounded-lg ${darkMode ? 'hover:bg-[#252525]' : 'hover:bg-[#F3F4F6]'} ${theme.textSecondary}`}
+                className={`p-2.5 rounded-lg ${darkMode ? 'hover:bg-[#1E1E1E]' : 'hover:bg-[#F3F4F6]'} ${theme.textSecondary} transition-colors`}
               >
                 <ChevronLeft size={20} />
               </button>
@@ -916,11 +1191,11 @@ export default function TaskManager() {
 
         {/* Next Task Card */}
         {nextTask && view !== 'day' && (
-          <div className={`${theme.card} rounded-2xl shadow-sm p-5 border-r-4 border-[#2563EB]`}>
-            <div className={`text-xs font-medium ${theme.textMuted} mb-1`}>המשימה הבאה</div>
+          <div className={`${theme.card} rounded-2xl shadow-sm p-5 border-r-4 border-[#2563EB] border ${theme.border}`}>
+            <div className={`text-xs font-semibold uppercase tracking-wide ${theme.textMuted} mb-2`}>המשימה הבאה</div>
             <div className="flex items-center gap-3">
               {nextTask.time && (
-                <span className={`text-lg font-semibold ${theme.text}`}>{nextTask.time}</span>
+                <span className={`text-lg font-mono font-bold ${theme.text}`}>{nextTask.time}</span>
               )}
               <span className={`text-lg ${theme.text}`}>{nextTask.text}</span>
             </div>
@@ -934,14 +1209,13 @@ export default function TaskManager() {
 
         {/* Keyboard Shortcuts Hint */}
         <div className={`text-center text-xs ${theme.textMuted}`}>
-          <span className="opacity-60">
-            N משימה חדשה · T היום · 1/2/3 תצוגה · / חיפוש
-          </span>
+          N משימה חדשה | T היום | 1/2/3 תצוגה | / חיפוש | Ctrl+R משימות קבועות
         </div>
 
         {/* Modals */}
         {showNewTask && <NewTaskModal />}
         {showSearch && <SearchModal />}
+        {showRecurringManager && <RecurringManagerModal />}
         <HoverPreview />
       </div>
     </div>
