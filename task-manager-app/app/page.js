@@ -149,7 +149,7 @@ export default function TaskManager() {
     }));
   }, [darkMode, tasks, recurringTasks, streak, isLoaded]);
 
-  // Process recurring tasks - runs on load and when recurring tasks change
+  // Process recurring tasks - creates tasks for today and generates for future days when needed
   useEffect(() => {
     if (!isLoaded || recurringTasks.length === 0) return;
     
@@ -166,8 +166,7 @@ export default function TaskManager() {
       if (rt.frequency === 'daily') {
         shouldAdd = true;
       } else if (rt.frequency === 'weekly') {
-        // Support multiple days - daysOfWeek is an array
-        const days = rt.daysOfWeek || [rt.dayOfWeek];
+        const days = rt.daysOfWeek || [];
         shouldAdd = days.includes(todayDayOfWeek);
       } else if (rt.frequency === 'monthly' && rt.dayOfMonth === todayDayOfMonth) {
         shouldAdd = true;
@@ -205,6 +204,97 @@ export default function TaskManager() {
       });
     }
   }, [recurringTasks, isLoaded]);
+
+  // Generate recurring tasks for a specific date
+  const generateRecurringForDate = useCallback((dateKey) => {
+    if (recurringTasks.length === 0) return;
+    
+    const date = new Date(dateKey);
+    const dayOfWeek = date.getDay();
+    const dayOfMonth = date.getDate();
+    
+    // Don't generate for past dates
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (date < today) return;
+    
+    let tasksToAdd = [];
+
+    recurringTasks.forEach(rt => {
+      let shouldAdd = false;
+
+      if (rt.frequency === 'daily') {
+        shouldAdd = true;
+      } else if (rt.frequency === 'weekly') {
+        const days = rt.daysOfWeek || [];
+        shouldAdd = days.includes(dayOfWeek);
+      } else if (rt.frequency === 'monthly' && rt.dayOfMonth === dayOfMonth) {
+        shouldAdd = true;
+      }
+
+      if (shouldAdd) {
+        tasksToAdd.push(rt);
+      }
+    });
+
+    if (tasksToAdd.length > 0) {
+      setTasks(prev => {
+        const currentTasks = prev[dateKey] || [];
+        const newTasks = [...currentTasks];
+        let hasChanges = false;
+        
+        tasksToAdd.forEach(rt => {
+          const exists = currentTasks.some(t => t.recurringId === rt.id);
+          if (!exists) {
+            newTasks.push({
+              id: Date.now() + Math.random(),
+              text: rt.text,
+              completed: false,
+              time: rt.time || null,
+              tag: rt.tag || null,
+              recurringId: rt.id,
+              subtasks: []
+            });
+            hasChanges = true;
+          }
+        });
+
+        if (hasChanges) {
+          return { ...prev, [dateKey]: newTasks };
+        }
+        return prev;
+      });
+    }
+  }, [recurringTasks]);
+
+  // Generate recurring tasks for visible dates + one month ahead
+  useEffect(() => {
+    if (!isLoaded || recurringTasks.length === 0) return;
+    
+    // Generate for current view
+    if (view === 'day') {
+      generateRecurringForDate(formatDateKey(currentDate));
+    } else if (view === 'week') {
+      const weekDts = getWeekDates(currentDate);
+      weekDts.forEach(date => {
+        generateRecurringForDate(formatDateKey(date));
+      });
+    } else if (view === 'month') {
+      // Generate for current month
+      const monthDts = getMonthDates(currentDate);
+      monthDts.forEach(date => {
+        generateRecurringForDate(formatDateKey(date));
+      });
+      
+      // Also generate for next month
+      const nextMonth = new Date(currentDate);
+      nextMonth.setMonth(nextMonth.getMonth() + 1);
+      const nextMonthDts = getMonthDates(nextMonth);
+      nextMonthDts.forEach(date => {
+        generateRecurringForDate(formatDateKey(date));
+      });
+    }
+  }, [currentDate, view, isLoaded, generateRecurringForDate]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -342,6 +432,8 @@ export default function TaskManager() {
   const getDayStats = (dateKey) => {
     const dayTasks = tasks[dateKey] || [];
     let total = 0, completed = 0;
+    let tagCounts = { work: 0, personal: 0, urgent: 0, none: 0 };
+    
     dayTasks.forEach(task => {
       if (task.subtasks?.length > 0) {
         total += task.subtasks.length;
@@ -350,9 +442,16 @@ export default function TaskManager() {
         total += 1;
         completed += task.completed ? 1 : 0;
       }
+      // Count by tag
+      if (task.tag && tagCounts.hasOwnProperty(task.tag)) {
+        tagCounts[task.tag]++;
+      } else {
+        tagCounts.none++;
+      }
     });
+    
     const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
-    return { total, completed, percentage, tasks: dayTasks };
+    return { total, completed, percentage, tasks: dayTasks, tagCounts };
   };
 
   const getWeekStats = () => {
@@ -447,8 +546,12 @@ export default function TaskManager() {
               </span>
               {tag && (
                 <span 
-                  className="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase tracking-wide"
-                  style={{ backgroundColor: `${tag.color}15`, color: tag.color }}
+                  className="text-[11px] px-2 py-0.5 rounded-md font-semibold border"
+                  style={{ 
+                    backgroundColor: `${tag.color}20`, 
+                    color: tag.color,
+                    borderColor: `${tag.color}40`
+                  }}
                 >
                   {tag.name}
                 </span>
@@ -791,8 +894,12 @@ export default function TaskManager() {
                             <span className={`font-medium ${theme.text}`}>{rt.text}</span>
                             {tag && (
                               <span 
-                                className="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase"
-                                style={{ backgroundColor: `${tag.color}15`, color: tag.color }}
+                                className="text-[11px] px-2 py-0.5 rounded-md font-semibold border"
+                                style={{ 
+                                  backgroundColor: `${tag.color}20`, 
+                                  color: tag.color,
+                                  borderColor: `${tag.color}40`
+                                }}
                               >
                                 {tag.name}
                               </span>
@@ -930,6 +1037,7 @@ export default function TaskManager() {
   const DayView = () => {
     const dateKey = formatDateKey(currentDate);
     const dayTasks = tasks[dateKey] || [];
+    const stats = getDayStats(dateKey);
     const isToday = dateKey === today;
 
     const tasksByHour = HOURS.reduce((acc, hour) => {
@@ -945,19 +1053,51 @@ export default function TaskManager() {
 
     return (
       <div className={`${theme.card} rounded-2xl shadow-sm overflow-hidden border ${theme.border}`}>
-        <div className={`p-5 border-b ${theme.border} flex items-center justify-between`}>
-          <div>
-            <div className={`text-xl font-semibold ${theme.text}`}>
-              {hebrewDays[currentDate.getDay()]}
+        <div className={`p-5 border-b ${theme.border}`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className={`text-xl font-semibold ${theme.text}`}>
+                {hebrewDays[currentDate.getDay()]}
+              </div>
+              <div className={`text-sm ${theme.textSecondary} mt-0.5`}>
+                {currentDate.getDate()} {hebrewMonths[currentDate.getMonth()]} {currentDate.getFullYear()}
+              </div>
             </div>
-            <div className={`text-sm ${theme.textSecondary} mt-0.5`}>
-              {currentDate.getDate()} {hebrewMonths[currentDate.getMonth()]} {currentDate.getFullYear()}
-            </div>
+            {isToday && (
+              <span className="px-3 py-1.5 bg-[#2563EB] text-white text-xs font-semibold rounded-lg">
+                היום
+              </span>
+            )}
           </div>
-          {isToday && (
-            <span className="px-3 py-1.5 bg-[#2563EB] text-white text-xs font-semibold rounded-lg">
-              היום
-            </span>
+          
+          {/* Tag summary for the day */}
+          {stats.total > 0 && (
+            <div className="mt-4 flex items-center gap-4">
+              {stats.tagCounts.work > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: '#2563EB' }} />
+                  <span className={`text-xs ${theme.textSecondary}`}>{stats.tagCounts.work} עבודה</span>
+                </div>
+              )}
+              {stats.tagCounts.personal > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: '#64748B' }} />
+                  <span className={`text-xs ${theme.textSecondary}`}>{stats.tagCounts.personal} אישי</span>
+                </div>
+              )}
+              {stats.tagCounts.urgent > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: '#B91C1C' }} />
+                  <span className={`text-xs ${theme.textSecondary}`}>{stats.tagCounts.urgent} דחוף</span>
+                </div>
+              )}
+              {stats.tagCounts.none > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <div className={`w-2.5 h-2.5 rounded-sm ${darkMode ? 'bg-[#404040]' : 'bg-[#D1D5DB]'}`} />
+                  <span className={`text-xs ${theme.textSecondary}`}>{stats.tagCounts.none} ללא תגית</span>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -1008,6 +1148,12 @@ export default function TaskManager() {
         const dayTasks = tasks[dateKey] || [];
         const stats = getDayStats(dateKey);
         const isToday = dateKey === today;
+        
+        // Calculate tag distribution bar
+        const totalTasks = stats.total || 1;
+        const workPercent = (stats.tagCounts.work / totalTasks) * 100;
+        const personalPercent = (stats.tagCounts.personal / totalTasks) * 100;
+        const urgentPercent = (stats.tagCounts.urgent / totalTasks) * 100;
 
         return (
           <div 
@@ -1025,9 +1171,26 @@ export default function TaskManager() {
                 {date.getDate()}
               </div>
               {stats.total > 0 && (
-                <div className={`text-xs mt-2 font-medium ${isToday ? 'text-blue-100' : theme.textMuted}`}>
-                  {stats.completed}/{stats.total}
-                </div>
+                <>
+                  <div className={`text-xs mt-2 font-medium ${isToday ? 'text-blue-100' : theme.textMuted}`}>
+                    {stats.completed}/{stats.total}
+                  </div>
+                  {/* Tag distribution bar */}
+                  <div className="flex h-1.5 mt-2 rounded-full overflow-hidden">
+                    {workPercent > 0 && (
+                      <div style={{ width: `${workPercent}%`, backgroundColor: '#2563EB' }} />
+                    )}
+                    {personalPercent > 0 && (
+                      <div style={{ width: `${personalPercent}%`, backgroundColor: '#64748B' }} />
+                    )}
+                    {urgentPercent > 0 && (
+                      <div style={{ width: `${urgentPercent}%`, backgroundColor: '#B91C1C' }} />
+                    )}
+                    {stats.tagCounts.none > 0 && (
+                      <div style={{ width: `${(stats.tagCounts.none / totalTasks) * 100}%`, backgroundColor: isToday ? 'rgba(255,255,255,0.3)' : darkMode ? '#333' : '#E5E5E5' }} />
+                    )}
+                  </div>
+                </>
               )}
             </div>
 
@@ -1064,6 +1227,22 @@ export default function TaskManager() {
 
     return (
       <div className={`${theme.card} rounded-2xl shadow-sm p-5 border ${theme.border}`}>
+        {/* Legend */}
+        <div className="flex items-center justify-end gap-4 mb-4 text-xs">
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#2563EB' }} />
+            <span className={theme.textSecondary}>עבודה</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#64748B' }} />
+            <span className={theme.textSecondary}>אישי</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#B91C1C' }} />
+            <span className={theme.textSecondary}>דחוף</span>
+          </div>
+        </div>
+        
         <div className="grid grid-cols-7 gap-1 mb-3">
           {hebrewDays.map(day => (
             <div key={day} className={`text-center text-sm font-semibold py-2 ${theme.textSecondary}`}>
@@ -1080,6 +1259,12 @@ export default function TaskManager() {
             const dateKey = formatDateKey(date);
             const stats = getDayStats(dateKey);
             const isToday = dateKey === today;
+            
+            // Calculate tag distribution
+            const totalTasks = stats.total || 1;
+            const workPercent = (stats.tagCounts.work / totalTasks) * 100;
+            const personalPercent = (stats.tagCounts.personal / totalTasks) * 100;
+            const urgentPercent = (stats.tagCounts.urgent / totalTasks) * 100;
 
             return (
               <div
@@ -1103,13 +1288,20 @@ export default function TaskManager() {
                 </div>
                 {stats.total > 0 && (
                   <div className="mt-1">
-                    <div 
-                      className={`h-1 rounded-full ${isToday ? 'bg-white/30' : darkMode ? 'bg-[#252525]' : 'bg-[#E5E5E5]'}`}
-                    >
-                      <div 
-                        className={`h-1 rounded-full transition-all ${isToday ? 'bg-white' : 'bg-[#2563EB]'}`}
-                        style={{ width: `${stats.percentage}%` }}
-                      />
+                    {/* Tag distribution bar */}
+                    <div className="flex h-1.5 rounded-full overflow-hidden">
+                      {workPercent > 0 && (
+                        <div style={{ width: `${workPercent}%`, backgroundColor: isToday ? 'rgba(255,255,255,0.8)' : '#2563EB' }} />
+                      )}
+                      {personalPercent > 0 && (
+                        <div style={{ width: `${personalPercent}%`, backgroundColor: isToday ? 'rgba(255,255,255,0.5)' : '#64748B' }} />
+                      )}
+                      {urgentPercent > 0 && (
+                        <div style={{ width: `${urgentPercent}%`, backgroundColor: isToday ? 'rgba(255,200,200,0.8)' : '#B91C1C' }} />
+                      )}
+                      {stats.tagCounts.none > 0 && (
+                        <div style={{ width: `${(stats.tagCounts.none / totalTasks) * 100}%`, backgroundColor: isToday ? 'rgba(255,255,255,0.3)' : darkMode ? '#333' : '#E5E5E5' }} />
+                      )}
                     </div>
                     <div className={`text-[10px] mt-1 ${isToday ? 'text-blue-100' : theme.textMuted}`}>
                       {stats.completed}/{stats.total}
