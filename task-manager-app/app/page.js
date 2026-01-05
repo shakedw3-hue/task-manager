@@ -10,9 +10,9 @@ const hebrewMonths = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מ�
 const HOURS = Array.from({ length: 16 }, (_, i) => i + 6);
 
 const TAGS = [
-  { id: 'work', name: 'עבודה', color: '#2563EB' },
-  { id: 'personal', name: 'אישי', color: '#6B7280' },
-  { id: 'urgent', name: 'דחוף', color: '#DC2626' },
+  { id: 'work', name: 'עבודה', color: '#2563EB' },      // כחול - הדגשה ראשית
+  { id: 'personal', name: 'אישי', color: '#64748B' },   // אפור-כחלחל
+  { id: 'urgent', name: 'דחוף', color: '#B91C1C' },     // אדום כהה מעודן
 ];
 
 // Utility functions
@@ -128,6 +128,8 @@ export default function TaskManager() {
   };
 
   // Load/Save localStorage
+  const [isLoaded, setIsLoaded] = useState(false);
+  
   useEffect(() => {
     const saved = localStorage.getItem('taskManagerPro');
     if (saved) {
@@ -137,42 +139,54 @@ export default function TaskManager() {
       setRecurringTasks(data.recurringTasks ?? []);
       setStreak(data.streak ?? 0);
     }
+    setIsLoaded(true);
   }, []);
 
   useEffect(() => {
+    if (!isLoaded) return;
     localStorage.setItem('taskManagerPro', JSON.stringify({
       darkMode, tasks, recurringTasks, streak
     }));
-  }, [darkMode, tasks, recurringTasks, streak]);
+  }, [darkMode, tasks, recurringTasks, streak, isLoaded]);
 
-  // Process recurring tasks daily
+  // Process recurring tasks - runs on load and when recurring tasks change
   useEffect(() => {
-    const todayKey = formatDateKey(new Date());
-    const processedKey = `recurring_v2_${todayKey}`;
-    
-    if (localStorage.getItem(processedKey)) return;
+    if (!isLoaded || recurringTasks.length === 0) return;
     
     const todayDate = new Date();
+    const todayKey = formatDateKey(todayDate);
     const todayDayOfWeek = todayDate.getDay();
     const todayDayOfMonth = todayDate.getDate();
+
+    let tasksToAdd = [];
 
     recurringTasks.forEach(rt => {
       let shouldAdd = false;
 
       if (rt.frequency === 'daily') {
         shouldAdd = true;
-      } else if (rt.frequency === 'weekly' && rt.dayOfWeek === todayDayOfWeek) {
-        shouldAdd = true;
+      } else if (rt.frequency === 'weekly') {
+        // Support multiple days - daysOfWeek is an array
+        const days = rt.daysOfWeek || [rt.dayOfWeek];
+        shouldAdd = days.includes(todayDayOfWeek);
       } else if (rt.frequency === 'monthly' && rt.dayOfMonth === todayDayOfMonth) {
         shouldAdd = true;
       }
 
       if (shouldAdd) {
-        const exists = tasks[todayKey]?.some(t => t.recurringId === rt.id);
-        if (!exists) {
-          setTasks(prev => ({
-            ...prev,
-            [todayKey]: [...(prev[todayKey] || []), {
+        tasksToAdd.push(rt);
+      }
+    });
+
+    if (tasksToAdd.length > 0) {
+      setTasks(prev => {
+        const currentTasks = prev[todayKey] || [];
+        const newTasks = [...currentTasks];
+        
+        tasksToAdd.forEach(rt => {
+          const exists = currentTasks.some(t => t.recurringId === rt.id);
+          if (!exists) {
+            newTasks.push({
               id: Date.now() + Math.random(),
               text: rt.text,
               completed: false,
@@ -180,14 +194,17 @@ export default function TaskManager() {
               tag: rt.tag || null,
               recurringId: rt.id,
               subtasks: []
-            }]
-          }));
+            });
+          }
+        });
+
+        if (newTasks.length !== currentTasks.length) {
+          return { ...prev, [todayKey]: newTasks };
         }
-      }
-    });
-    
-    localStorage.setItem(processedKey, 'true');
-  }, [recurringTasks, tasks]);
+        return prev;
+      });
+    }
+  }, [recurringTasks, isLoaded]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -283,7 +300,7 @@ export default function TaskManager() {
       time: taskData.time || null,
       tag: taskData.tag || null,
       frequency: taskData.frequency,
-      dayOfWeek: taskData.dayOfWeek,
+      daysOfWeek: taskData.daysOfWeek || [],
       dayOfMonth: taskData.dayOfMonth,
     };
     setRecurringTasks(prev => [...prev, newRecurring]);
@@ -497,7 +514,7 @@ export default function TaskManager() {
     const [tag, setTag] = useState('');
     const [isRecurring, setIsRecurring] = useState(false);
     const [frequency, setFrequency] = useState('daily');
-    const [dayOfWeek, setDayOfWeek] = useState(0);
+    const [daysOfWeek, setDaysOfWeek] = useState([]);
     const [dayOfMonth, setDayOfMonth] = useState(1);
     const [subtasks, setSubtasks] = useState([]);
     const [newSubtask, setNewSubtask] = useState('');
@@ -507,11 +524,23 @@ export default function TaskManager() {
       inputRef.current?.focus();
     }, []);
 
+    const toggleDayOfWeek = (day) => {
+      setDaysOfWeek(prev => 
+        prev.includes(day) 
+          ? prev.filter(d => d !== day)
+          : [...prev, day]
+      );
+    };
+
     const handleSubmit = () => {
       if (!text.trim()) return;
       
       if (isRecurring) {
-        addRecurringTask({ text, time, tag, frequency, dayOfWeek, dayOfMonth });
+        if (frequency === 'weekly' && daysOfWeek.length === 0) {
+          alert('יש לבחור לפחות יום אחד');
+          return;
+        }
+        addRecurringTask({ text, time, tag, frequency, daysOfWeek, dayOfMonth });
       } else {
         addTask(newTaskDate, { text, time, tag, subtasks });
       }
@@ -592,7 +621,7 @@ export default function TaskManager() {
               </label>
 
               {isRecurring && (
-                <div className="mt-4 space-y-3">
+                <div className="mt-4 space-y-4">
                   <div>
                     <label className={`text-xs font-medium ${theme.textSecondary} mb-1.5 block`}>תדירות</label>
                     <select
@@ -601,21 +630,35 @@ export default function TaskManager() {
                       className={`w-full px-3 py-2.5 rounded-xl border text-sm ${theme.input} focus:outline-none focus:ring-2 focus:ring-[#2563EB]`}
                     >
                       <option value="daily">כל יום</option>
-                      <option value="weekly">כל שבוע</option>
+                      <option value="weekly">ימים בשבוע</option>
                       <option value="monthly">כל חודש</option>
                     </select>
                   </div>
 
                   {frequency === 'weekly' && (
                     <div>
-                      <label className={`text-xs font-medium ${theme.textSecondary} mb-1.5 block`}>ביום</label>
-                      <select
-                        value={dayOfWeek}
-                        onChange={(e) => setDayOfWeek(Number(e.target.value))}
-                        className={`w-full px-3 py-2.5 rounded-xl border text-sm ${theme.input} focus:outline-none focus:ring-2 focus:ring-[#2563EB]`}
-                      >
-                        {hebrewDays.map((day, i) => <option key={i} value={i}>{day}</option>)}
-                      </select>
+                      <label className={`text-xs font-medium ${theme.textSecondary} mb-2 block`}>בחר ימים</label>
+                      <div className="grid grid-cols-7 gap-1">
+                        {hebrewDays.map((day, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => toggleDayOfWeek(i)}
+                            className={`py-2 px-1 rounded-lg text-xs font-medium transition-all ${
+                              daysOfWeek.includes(i)
+                                ? 'bg-[#2563EB] text-white'
+                                : `${darkMode ? 'bg-[#252525] hover:bg-[#333]' : 'bg-white hover:bg-gray-100'} ${theme.text} border ${theme.border}`
+                            }`}
+                          >
+                            {day.slice(0, 2)}׳
+                          </button>
+                        ))}
+                      </div>
+                      {daysOfWeek.length > 0 && (
+                        <p className={`text-xs ${theme.textMuted} mt-2`}>
+                          נבחרו: {daysOfWeek.sort((a,b) => a-b).map(d => hebrewDays[d]).join(', ')}
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -698,7 +741,12 @@ export default function TaskManager() {
   const RecurringManagerModal = () => {
     const getFrequencyText = (rt) => {
       if (rt.frequency === 'daily') return 'כל יום';
-      if (rt.frequency === 'weekly') return `כל ${hebrewDays[rt.dayOfWeek]}`;
+      if (rt.frequency === 'weekly') {
+        const days = rt.daysOfWeek || [];
+        if (days.length === 0) return 'שבועי';
+        if (days.length === 7) return 'כל יום';
+        return days.sort((a,b) => a-b).map(d => hebrewDays[d]).join(', ');
+      }
       if (rt.frequency === 'monthly') return `ה-${rt.dayOfMonth} בכל חודש`;
       return '';
     };
