@@ -131,6 +131,20 @@ export default function TaskManager() {
   const [isLoaded, setIsLoaded] = useState(false);
   
   useEffect(() => {
+    // Clear old data and start fresh with v5
+    const version = localStorage.getItem('taskManagerVersion');
+    if (version !== 'v5') {
+      localStorage.removeItem('taskManagerPro');
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('processed_') || key.startsWith('recurring_')) {
+          localStorage.removeItem(key);
+        }
+      });
+      localStorage.setItem('taskManagerVersion', 'v5');
+      setIsLoaded(true);
+      return;
+    }
+    
     const saved = localStorage.getItem('taskManagerPro');
     if (saved) {
       const data = JSON.parse(saved);
@@ -149,47 +163,37 @@ export default function TaskManager() {
     }));
   }, [darkMode, tasks, recurringTasks, streak, isLoaded]);
 
-  // Process recurring tasks - creates tasks for today only (runs once on load)
+  // Process recurring tasks - simple and stable
   useEffect(() => {
     if (!isLoaded || recurringTasks.length === 0) return;
     
-    // Check if we already processed today
     const todayKey = formatDateKey(new Date());
-    const processedKey = `processed_${todayKey}`;
-    if (localStorage.getItem(processedKey)) return;
+    const processedToday = localStorage.getItem(`done_${todayKey}`);
+    if (processedToday) return;
     
     const todayDate = new Date();
     const todayDayOfWeek = todayDate.getDay();
     const todayDayOfMonth = todayDate.getDate();
 
-    let tasksToAdd = [];
+    setTasks(prev => {
+      const currentTasks = prev[todayKey] || [];
+      const newTasks = [...currentTasks];
+      let added = false;
+      
+      recurringTasks.forEach(rt => {
+        let shouldAdd = false;
 
-    recurringTasks.forEach(rt => {
-      let shouldAdd = false;
+        if (rt.frequency === 'daily') {
+          shouldAdd = true;
+        } else if (rt.frequency === 'weekly') {
+          const days = rt.daysOfWeek || [];
+          shouldAdd = days.includes(todayDayOfWeek);
+        } else if (rt.frequency === 'monthly' && rt.dayOfMonth === todayDayOfMonth) {
+          shouldAdd = true;
+        }
 
-      if (rt.frequency === 'daily') {
-        shouldAdd = true;
-      } else if (rt.frequency === 'weekly') {
-        const days = rt.daysOfWeek || [];
-        shouldAdd = days.includes(todayDayOfWeek);
-      } else if (rt.frequency === 'monthly' && rt.dayOfMonth === todayDayOfMonth) {
-        shouldAdd = true;
-      }
-
-      if (shouldAdd) {
-        tasksToAdd.push(rt);
-      }
-    });
-
-    if (tasksToAdd.length > 0) {
-      setTasks(prev => {
-        const currentTasks = prev[todayKey] || [];
-        const newTasks = [...currentTasks];
-        let hasChanges = false;
-        
-        tasksToAdd.forEach(rt => {
-          // Check by recurringId AND text to avoid duplicates
-          const exists = currentTasks.some(t => t.recurringId === rt.id || (t.text === rt.text && t.time === rt.time));
+        if (shouldAdd) {
+          const exists = currentTasks.some(t => t.recurringId === rt.id);
           if (!exists) {
             newTasks.push({
               id: Date.now() + Math.random(),
@@ -200,41 +204,36 @@ export default function TaskManager() {
               recurringId: rt.id,
               subtasks: []
             });
-            hasChanges = true;
+            added = true;
           }
-        });
-
-        if (hasChanges) {
-          localStorage.setItem(processedKey, 'true');
-          return { ...prev, [todayKey]: newTasks };
         }
-        return prev;
       });
-    }
+
+      if (added) {
+        localStorage.setItem(`done_${todayKey}`, 'true');
+        return { ...prev, [todayKey]: newTasks };
+      }
+      return prev;
+    });
     
-    localStorage.setItem(processedKey, 'true');
+    localStorage.setItem(`done_${todayKey}`, 'true');
   }, [recurringTasks, isLoaded]);
 
-  // Generate recurring tasks for a specific future date (only when explicitly viewing it)
-  const generateRecurringForDate = useCallback((dateKey) => {
+  // Generate recurring tasks for future dates when viewing them
+  const generateForFutureDate = useCallback((dateKey) => {
     if (recurringTasks.length === 0) return;
+    
+    const today = formatDateKey(new Date());
+    if (dateKey <= today) return; // Only future dates
     
     const date = new Date(dateKey);
     const dayOfWeek = date.getDay();
     const dayOfMonth = date.getDate();
     
-    // Only generate for future dates
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const targetDate = new Date(dateKey);
-    targetDate.setHours(0, 0, 0, 0);
-    
-    if (targetDate <= today) return; // Don't regenerate for today or past
-    
     setTasks(prev => {
       const currentTasks = prev[dateKey] || [];
       const newTasks = [...currentTasks];
-      let hasChanges = false;
+      let added = false;
       
       recurringTasks.forEach(rt => {
         let shouldAdd = false;
@@ -249,8 +248,7 @@ export default function TaskManager() {
         }
 
         if (shouldAdd) {
-          // Check by recurringId AND text to avoid duplicates
-          const exists = currentTasks.some(t => t.recurringId === rt.id || (t.text === rt.text && t.time === rt.time));
+          const exists = currentTasks.some(t => t.recurringId === rt.id);
           if (!exists) {
             newTasks.push({
               id: Date.now() + Math.random(),
@@ -261,51 +259,27 @@ export default function TaskManager() {
               recurringId: rt.id,
               subtasks: []
             });
-            hasChanges = true;
+            added = true;
           }
         }
       });
 
-      if (hasChanges) {
-        return { ...prev, [dateKey]: newTasks };
-      }
-      return prev;
+      return added ? { ...prev, [dateKey]: newTasks } : prev;
     });
   }, [recurringTasks]);
 
-  // Generate recurring tasks only when navigating to future dates
+  // Generate for visible future dates
   useEffect(() => {
     if (!isLoaded || recurringTasks.length === 0) return;
     
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const dates = view === 'day' 
+      ? [currentDate]
+      : view === 'week'
+        ? getWeekDates(currentDate)
+        : getMonthDates(currentDate);
     
-    if (view === 'day') {
-      const targetDate = new Date(currentDate);
-      targetDate.setHours(0, 0, 0, 0);
-      if (targetDate > today) {
-        generateRecurringForDate(formatDateKey(currentDate));
-      }
-    } else if (view === 'week') {
-      const weekDts = getWeekDates(currentDate);
-      weekDts.forEach(date => {
-        const targetDate = new Date(date);
-        targetDate.setHours(0, 0, 0, 0);
-        if (targetDate > today) {
-          generateRecurringForDate(formatDateKey(date));
-        }
-      });
-    } else if (view === 'month') {
-      const monthDts = getMonthDates(currentDate);
-      monthDts.forEach(date => {
-        const targetDate = new Date(date);
-        targetDate.setHours(0, 0, 0, 0);
-        if (targetDate > today) {
-          generateRecurringForDate(formatDateKey(date));
-        }
-      });
-    }
-  }, [currentDate, view, isLoaded, generateRecurringForDate]);
+    dates.forEach(d => generateForFutureDate(formatDateKey(d)));
+  }, [currentDate, view, isLoaded, generateForFutureDate]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -1375,13 +1349,6 @@ export default function TaskManager() {
             </div>
 
             <div className="flex items-center gap-2">
-              <button
-                onClick={removeDuplicates}
-                className={`p-2.5 rounded-xl ${darkMode ? 'hover:bg-[#1E1E1E]' : 'hover:bg-[#F3F4F6]'} ${theme.textSecondary} transition-colors`}
-                title="הסר כפילויות"
-              >
-                <Trash2 size={18} />
-              </button>
               <button
                 onClick={() => setShowRecurringManager(true)}
                 className={`p-2.5 rounded-xl ${darkMode ? 'hover:bg-[#1E1E1E]' : 'hover:bg-[#F3F4F6]'} ${theme.textSecondary} transition-colors`}
