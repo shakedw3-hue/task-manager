@@ -149,12 +149,16 @@ export default function TaskManager() {
     }));
   }, [darkMode, tasks, recurringTasks, streak, isLoaded]);
 
-  // Process recurring tasks - creates tasks for today and generates for future days when needed
+  // Process recurring tasks - creates tasks for today only (runs once on load)
   useEffect(() => {
     if (!isLoaded || recurringTasks.length === 0) return;
     
+    // Check if we already processed today
+    const todayKey = formatDateKey(new Date());
+    const processedKey = `processed_${todayKey}`;
+    if (localStorage.getItem(processedKey)) return;
+    
     const todayDate = new Date();
-    const todayKey = formatDateKey(todayDate);
     const todayDayOfWeek = todayDate.getDay();
     const todayDayOfMonth = todayDate.getDate();
 
@@ -181,70 +185,11 @@ export default function TaskManager() {
       setTasks(prev => {
         const currentTasks = prev[todayKey] || [];
         const newTasks = [...currentTasks];
-        
-        tasksToAdd.forEach(rt => {
-          const exists = currentTasks.some(t => t.recurringId === rt.id);
-          if (!exists) {
-            newTasks.push({
-              id: Date.now() + Math.random(),
-              text: rt.text,
-              completed: false,
-              time: rt.time || null,
-              tag: rt.tag || null,
-              recurringId: rt.id,
-              subtasks: []
-            });
-          }
-        });
-
-        if (newTasks.length !== currentTasks.length) {
-          return { ...prev, [todayKey]: newTasks };
-        }
-        return prev;
-      });
-    }
-  }, [recurringTasks, isLoaded]);
-
-  // Generate recurring tasks for a specific date
-  const generateRecurringForDate = useCallback((dateKey) => {
-    if (recurringTasks.length === 0) return;
-    
-    const date = new Date(dateKey);
-    const dayOfWeek = date.getDay();
-    const dayOfMonth = date.getDate();
-    
-    // Don't generate for past dates
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (date < today) return;
-    
-    let tasksToAdd = [];
-
-    recurringTasks.forEach(rt => {
-      let shouldAdd = false;
-
-      if (rt.frequency === 'daily') {
-        shouldAdd = true;
-      } else if (rt.frequency === 'weekly') {
-        const days = rt.daysOfWeek || [];
-        shouldAdd = days.includes(dayOfWeek);
-      } else if (rt.frequency === 'monthly' && rt.dayOfMonth === dayOfMonth) {
-        shouldAdd = true;
-      }
-
-      if (shouldAdd) {
-        tasksToAdd.push(rt);
-      }
-    });
-
-    if (tasksToAdd.length > 0) {
-      setTasks(prev => {
-        const currentTasks = prev[dateKey] || [];
-        const newTasks = [...currentTasks];
         let hasChanges = false;
         
         tasksToAdd.forEach(rt => {
-          const exists = currentTasks.some(t => t.recurringId === rt.id);
+          // Check by recurringId AND text to avoid duplicates
+          const exists = currentTasks.some(t => t.recurringId === rt.id || (t.text === rt.text && t.time === rt.time));
           if (!exists) {
             newTasks.push({
               id: Date.now() + Math.random(),
@@ -260,38 +205,104 @@ export default function TaskManager() {
         });
 
         if (hasChanges) {
-          return { ...prev, [dateKey]: newTasks };
+          localStorage.setItem(processedKey, 'true');
+          return { ...prev, [todayKey]: newTasks };
         }
         return prev;
       });
     }
+    
+    localStorage.setItem(processedKey, 'true');
+  }, [recurringTasks, isLoaded]);
+
+  // Generate recurring tasks for a specific future date (only when explicitly viewing it)
+  const generateRecurringForDate = useCallback((dateKey) => {
+    if (recurringTasks.length === 0) return;
+    
+    const date = new Date(dateKey);
+    const dayOfWeek = date.getDay();
+    const dayOfMonth = date.getDate();
+    
+    // Only generate for future dates
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const targetDate = new Date(dateKey);
+    targetDate.setHours(0, 0, 0, 0);
+    
+    if (targetDate <= today) return; // Don't regenerate for today or past
+    
+    setTasks(prev => {
+      const currentTasks = prev[dateKey] || [];
+      const newTasks = [...currentTasks];
+      let hasChanges = false;
+      
+      recurringTasks.forEach(rt => {
+        let shouldAdd = false;
+
+        if (rt.frequency === 'daily') {
+          shouldAdd = true;
+        } else if (rt.frequency === 'weekly') {
+          const days = rt.daysOfWeek || [];
+          shouldAdd = days.includes(dayOfWeek);
+        } else if (rt.frequency === 'monthly' && rt.dayOfMonth === dayOfMonth) {
+          shouldAdd = true;
+        }
+
+        if (shouldAdd) {
+          // Check by recurringId AND text to avoid duplicates
+          const exists = currentTasks.some(t => t.recurringId === rt.id || (t.text === rt.text && t.time === rt.time));
+          if (!exists) {
+            newTasks.push({
+              id: Date.now() + Math.random(),
+              text: rt.text,
+              completed: false,
+              time: rt.time || null,
+              tag: rt.tag || null,
+              recurringId: rt.id,
+              subtasks: []
+            });
+            hasChanges = true;
+          }
+        }
+      });
+
+      if (hasChanges) {
+        return { ...prev, [dateKey]: newTasks };
+      }
+      return prev;
+    });
   }, [recurringTasks]);
 
-  // Generate recurring tasks for visible dates + one month ahead
+  // Generate recurring tasks only when navigating to future dates
   useEffect(() => {
     if (!isLoaded || recurringTasks.length === 0) return;
     
-    // Generate for current view
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
     if (view === 'day') {
-      generateRecurringForDate(formatDateKey(currentDate));
+      const targetDate = new Date(currentDate);
+      targetDate.setHours(0, 0, 0, 0);
+      if (targetDate > today) {
+        generateRecurringForDate(formatDateKey(currentDate));
+      }
     } else if (view === 'week') {
       const weekDts = getWeekDates(currentDate);
       weekDts.forEach(date => {
-        generateRecurringForDate(formatDateKey(date));
+        const targetDate = new Date(date);
+        targetDate.setHours(0, 0, 0, 0);
+        if (targetDate > today) {
+          generateRecurringForDate(formatDateKey(date));
+        }
       });
     } else if (view === 'month') {
-      // Generate for current month
       const monthDts = getMonthDates(currentDate);
       monthDts.forEach(date => {
-        generateRecurringForDate(formatDateKey(date));
-      });
-      
-      // Also generate for next month
-      const nextMonth = new Date(currentDate);
-      nextMonth.setMonth(nextMonth.getMonth() + 1);
-      const nextMonthDts = getMonthDates(nextMonth);
-      nextMonthDts.forEach(date => {
-        generateRecurringForDate(formatDateKey(date));
+        const targetDate = new Date(date);
+        targetDate.setHours(0, 0, 0, 0);
+        if (targetDate > today) {
+          generateRecurringForDate(formatDateKey(date));
+        }
       });
     }
   }, [currentDate, view, isLoaded, generateRecurringForDate]);
@@ -398,6 +409,39 @@ export default function TaskManager() {
 
   const deleteRecurringTask = (id) => {
     setRecurringTasks(prev => prev.filter(rt => rt.id !== id));
+  };
+
+  // Clear all data (for fixing duplicates)
+  const clearAllData = () => {
+    if (confirm('האם למחוק את כל המשימות? פעולה זו לא ניתנת לביטול.')) {
+      setTasks({});
+      setRecurringTasks([]);
+      setStreak(0);
+      localStorage.removeItem('taskManagerPro');
+      // Clear all processed flags
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('processed_')) {
+          localStorage.removeItem(key);
+        }
+      });
+    }
+  };
+
+  // Remove duplicate tasks from a specific date
+  const removeDuplicates = () => {
+    setTasks(prev => {
+      const cleaned = {};
+      Object.entries(prev).forEach(([dateKey, dayTasks]) => {
+        const seen = new Set();
+        cleaned[dateKey] = dayTasks.filter(task => {
+          const key = `${task.text}-${task.time || 'notime'}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      });
+      return cleaned;
+    });
   };
 
   const toggleTask = (dateKey, taskId) => {
@@ -1331,6 +1375,13 @@ export default function TaskManager() {
             </div>
 
             <div className="flex items-center gap-2">
+              <button
+                onClick={removeDuplicates}
+                className={`p-2.5 rounded-xl ${darkMode ? 'hover:bg-[#1E1E1E]' : 'hover:bg-[#F3F4F6]'} ${theme.textSecondary} transition-colors`}
+                title="הסר כפילויות"
+              >
+                <Trash2 size={18} />
+              </button>
               <button
                 onClick={() => setShowRecurringManager(true)}
                 className={`p-2.5 rounded-xl ${darkMode ? 'hover:bg-[#1E1E1E]' : 'hover:bg-[#F3F4F6]'} ${theme.textSecondary} transition-colors`}
